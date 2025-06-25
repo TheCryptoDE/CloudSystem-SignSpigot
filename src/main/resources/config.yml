@@ -1,0 +1,23 @@
+# CloudSignPlugin Konfiguration
+
+# Liste registrierter Schilder (wird automatisch vom Plugin befüllt)
+signs:
+# Beispiel:
+# "world;x;y;z": SkyWars
+# "lobby;100;64;200": BedWars
+
+# Allgemeine Einstellungen
+refresh-interval-seconds: 5 # Wie oft sollen Schilder aktualisiert werden (in Sekunden)
+
+# Layout-Templates (optional, für spätere Erweiterung)
+layout:
+  server-found:
+    line1: "%server%"
+    line2: "%status% §b✓"
+    line3: "%group%"
+    line4: "%online% / %max%"
+  server-searching:
+    line1: "§7searching for"
+    line2: "§c⭘ ⭘ ⭘"
+    line3: ""
+    line4: ""
