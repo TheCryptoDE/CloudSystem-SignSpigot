@@ -1,7 +1,6 @@
-package de.synccloud.signconnector;
+package de.synccloud.signconnector.command;
 
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
+import de.synccloud.signconnector.SignSystem;
 import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
 import org.bukkit.command.Command;

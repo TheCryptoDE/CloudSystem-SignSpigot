@@ -1,10 +1,10 @@
-package de.synccloud.signconnector;
+package de.synccloud.signconnector.listener;
 
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 
-public class playerjoin implements Listener {
+public class PlayerJoin_ implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event){

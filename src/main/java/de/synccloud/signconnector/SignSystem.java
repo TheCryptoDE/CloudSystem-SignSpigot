@@ -1,5 +1,8 @@
 package de.synccloud.signconnector;
 
+import de.synccloud.signconnector.command.SetSignCommand;
+import de.synccloud.signconnector.listener.PlayerJoin_;
+import de.synccloud.signconnector.mysql.MySQLManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.block.Sign;
@@ -12,11 +15,8 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.json.JSONObject;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.sql.*;
 import java.util.*;
 
@@ -33,7 +33,7 @@ public class SignSystem extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
-        Bukkit.getPluginManager().registerEvents(new playerjoin(), this);
+        Bukkit.getPluginManager().registerEvents(new PlayerJoin_(), this);
         getCommand("setsign").setExecutor(new SetSignCommand(this));
         mySQLManager = new MySQLManager(this.getDataFolder());
         mySQLManager.connect();

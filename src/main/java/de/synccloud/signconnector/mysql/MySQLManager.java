@@ -1,4 +1,4 @@
-package de.synccloud.signconnector;
+package de.synccloud.signconnector.mysql;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
