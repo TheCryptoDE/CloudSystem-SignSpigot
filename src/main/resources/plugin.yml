@@ -1,6 +1,15 @@
-name: CloudSignPlugin
+name: CloudBridge
 main: de.synccloud.signconnector.SignSystem
 version: 1.0
 api-version: 1.20
+
 commands:
   setsign:
+    description: Setzt ein Serverschild
+    usage: /setsign
+  perm:
+    description: Verwalte Spielerrechte
+    usage: /perm <add|remove|list>
+  group:
+    description: Verwalte Gruppen
+    usage: /group <create|delete|addperm|removeperm|list>

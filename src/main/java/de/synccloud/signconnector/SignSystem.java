@@ -1,8 +1,13 @@
 package de.synccloud.signconnector;
 
 import de.synccloud.signconnector.command.SetSignCommand;
+import de.synccloud.signconnector.listener.PermissionListener;
 import de.synccloud.signconnector.listener.PlayerJoin;
+import de.synccloud.signconnector.mysql.MySQLConfig;
 import de.synccloud.signconnector.mysql.MySQLManager;
+import de.synccloud.signconnector.permission.PermissionManager;
+import de.synccloud.signconnector.permission.command.PermissionCommand;
+import de.synccloud.signconnector.permission.command.PermissionMessageListener;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.block.Sign;
@@ -28,13 +33,31 @@ public class SignSystem extends JavaPlugin implements Listener {
     private final Map<String, Integer> groupMaxPlayers = new HashMap<>();
     private MySQLManager mySQLManager;
 
+    private PermissionManager permissionManager;
+
 
 
     @Override
     public void onEnable() {
+
+        File mysqlFile = new File("plugins/CloudBridge/mysql.json");
+        MySQLConfig config = MySQLConfig.loadFromFile(mysqlFile);
+
+        if (config == null){
+            getLogger().severe("Keine MySQL-Konfiguration gefunden. Abbruch.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        permissionManager = new PermissionManager(this,config);
+        this.getServer().getMessenger().registerIncomingPluginChannel(this, "my:channel", new PermissionMessageListener(this));
+        this.getServer().getMessenger().registerOutgoingPluginChannel(this, "my:channel");
+        getServer().getPluginManager().registerEvents(new PermissionListener(permissionManager), this);
+
         Bukkit.getPluginManager().registerEvents(this, this);
-        Bukkit.getPluginManager().registerEvents(new PlayerJoin(), this);
+        Bukkit.getPluginManager().registerEvents(new PlayerJoin(permissionManager), this);
         getCommand("setsign").setExecutor(new SetSignCommand(this));
+        getCommand("group").setExecutor(new PermissionCommand(permissionManager));
+        getCommand("perm").setExecutor(new PermissionCommand(permissionManager));
         mySQLManager = new MySQLManager(this.getDataFolder());
         mySQLManager.connect();
         this.getServer().getMessenger().registerOutgoingPluginChannel(this, "BungeeCord");
@@ -66,27 +89,16 @@ public class SignSystem extends JavaPlugin implements Listener {
         startLoadingAnimation();
     }
 
+
+
     @Override
     public void onDisable() {
         saveSigns();
     }
 
-    private void loadSigns() {
-        File file = new File(getDataFolder(), "signs.yml");
-        if (!file.exists()) return;
-        FileConfiguration cfg = YamlConfiguration.loadConfiguration(file);
-        for (String key : cfg.getKeys(false)) {
-            Location loc = stringToLocation(cfg.getString(key + ".location"));
-            String server = cfg.getString(key + ".server");
 
-            // Prüfen ob Server existiert
-            if (isServerInDatabase(server)) {
-                signServers.put(loc, server);
-            } else {
-                getLogger().warning("Server " + server + " nicht in der Datenbank gefunden. Schild wird auf Suche gesetzt.");
-                animationFrames.put(loc, 0); // Starte Ladeanimation
-            }
-        }
+    public PermissionManager getPermissionManager() {
+        return permissionManager;
     }
 
     private boolean isServerInDatabase(String serverName) {
@@ -501,4 +513,5 @@ public class SignSystem extends JavaPlugin implements Listener {
     public MySQLManager getMySQLManager() {
         return mySQLManager;
     }
+
 }
