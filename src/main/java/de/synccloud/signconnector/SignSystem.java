@@ -69,11 +69,17 @@ public class SignSystem extends JavaPlugin implements Listener {
                 String subchannel = in.readUTF();
 
                 if (subchannel.equals("PlayerCount")) {
-                    if (in.available() >= 2) { // Es muss noch mindestens 2 Bytes für das nächste UTF geben
+                    try {
                         String server = in.readUTF();
                         int count = in.readInt();
+
                         serverPlayerCount.put(server, count);
-                    } else {
+                        getLogger().info("Empfangen: PlayerCount für '" + server + "' = " + count);
+                    } catch (IOException e) {
+                        getLogger().warning("Fehler beim Verarbeiten von PlayerCount: " + e.getMessage());
+
+
+
 
                     }
                 }
@@ -100,6 +106,7 @@ public class SignSystem extends JavaPlugin implements Listener {
     public PermissionManager getPermissionManager() {
         return permissionManager;
     }
+
 
     private boolean isServerInDatabase(String serverName) {
         try {
@@ -167,8 +174,8 @@ public class SignSystem extends JavaPlugin implements Listener {
         new BukkitRunnable() {
             @Override
             public void run() {
-                requestServerCounts();
-                updateSigns();
+                SignSystem.this.requestServerCounts();
+                SignSystem.this.updateSigns();
             }
         }.runTaskTimerAsynchronously(this, 20, 20*5);
     }
@@ -209,39 +216,46 @@ public class SignSystem extends JavaPlugin implements Listener {
                 int count = serverPlayerCount.getOrDefault(server, -1);
                 String baseName = getBaseName(server);
 
-                // Prüfe ob Server gestartet ist (in started_servers)
-                if (!isServerStarted(server)) {
-                    // Server nicht gestartet → Ladeanimation starten
-                    if (!animationFrames.containsKey(loc)) {
-                        animationFrames.put(loc, 0);
-                    }
-                    continue;  // Kein Update auf dem Schild, Animation läuft
+                getLogger().info("Update Sign at " + loc + " for server " + server + ": count=" + count);
+
+                // Prüfe ob Server gestartet ist
+                boolean started = isServerStarted(server);
+
+                for (Player all : Bukkit.getOnlinePlayers()){
+                    all.sendMessage("Server '" + server + "' started: " + started);
+                }
+                getLogger().info("Server '" + server + "' started: " + started);
+                if (!started) {
+                    animationFrames.putIfAbsent(loc, 0);
+                    continue;
                 }
 
-                // Server ist gestartet, dann maxPlayers holen
-                int maxPlayers = getMaxPlayersFromDatabase(baseName);
+                int maxPlayers = groupMaxPlayers.getOrDefault(baseName.toLowerCase(), -1);
                 if (maxPlayers == -1) {
-                    maxPlayers = 20;
+                    maxPlayers = getMaxPlayersFromDatabase(baseName);
+                    if (maxPlayers == -1) maxPlayers = 20;
+                    groupMaxPlayers.put(baseName.toLowerCase(), maxPlayers);
+                }
+                getLogger().info("Max players for baseName '" + baseName + "': " + maxPlayers);
+
+                if (count == -1) {
+                    getLogger().warning("Player count für Server '" + server + "' ist -1 (offline oder unbekannt)");
                 }
 
-                // Prüfe ob Server voll ist oder offline (count == -1)
                 if (count == -1 || count >= maxPlayers) {
                     String nextServer = findNextAvailableServer(baseName, server);
+                    getLogger().info("Next available server für baseName '" + baseName + "': " + nextServer);
                     if (nextServer != null) {
                         signServers.put(loc, nextServer);
                         saveSigns();
                         server = nextServer;
                         count = serverPlayerCount.getOrDefault(server, -1);
                     } else {
-                        // Kein Server verfügbar → Animation starten
-                        if (!animationFrames.containsKey(loc)) {
-                            animationFrames.put(loc, 0);
-                        }
-                        continue; // Keine weiteren Updates auf dem Schild
+                        animationFrames.putIfAbsent(loc, 0);
+                        continue;
                     }
                 }
 
-                // Server ist online und nicht voll → Update Schild
                 if (loc.getBlock().getState() instanceof Sign sign) {
                     if (count >= 0) {
                         sign.setLine(0, "§a" + server);
@@ -251,14 +265,13 @@ public class SignSystem extends JavaPlugin implements Listener {
                         sign.update();
                         animationFrames.remove(loc);
                     } else {
-                        if (!animationFrames.containsKey(loc)) {
-                            animationFrames.put(loc, 0);
-                        }
+                        animationFrames.putIfAbsent(loc, 0);
                     }
                 }
             }
         });
     }
+
 
     private void loadSignsFromDatabase() {
         Connection conn = mySQLManager.getConnection();
