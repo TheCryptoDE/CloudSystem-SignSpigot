@@ -9,7 +9,7 @@
         <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>CloudSystem-SignSpigot</artifactId>
+    <artifactId>CloudBridge</artifactId>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
@@ -22,6 +22,7 @@
             <id>spigot-repo</id>
             <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
         </repository>
+
     </repositories>
 
     <dependencies>
@@ -36,7 +37,6 @@
             <artifactId>mysql-connector-java</artifactId>
             <version>8.0.33</version> <!-- oder aktuelle Version -->
         </dependency>
-
         <dependency>
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>

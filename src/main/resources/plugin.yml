@@ -13,3 +13,5 @@ commands:
   group:
     description: Verwalte Gruppen
     usage: /group <create|delete|addperm|removeperm|list>
+  setnpc:
+    description: Setzt einen NPC für einen Server

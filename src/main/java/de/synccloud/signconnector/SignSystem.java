@@ -1,8 +1,12 @@
 package de.synccloud.signconnector;
 
+import de.synccloud.signconnector.command.SetNPCCommand;
 import de.synccloud.signconnector.command.SetSignCommand;
+import de.synccloud.signconnector.listener.JumpITServerManager;
+import de.synccloud.signconnector.listener.NPCListener;
 import de.synccloud.signconnector.listener.PermissionListener;
 import de.synccloud.signconnector.listener.PlayerJoin;
+import de.synccloud.signconnector.manager.NPCManager;
 import de.synccloud.signconnector.mysql.MySQLConfig;
 import de.synccloud.signconnector.mysql.MySQLManager;
 import de.synccloud.signconnector.permission.PermissionManager;
@@ -10,14 +14,18 @@ import de.synccloud.signconnector.permission.command.PermissionCommand;
 import de.synccloud.signconnector.permission.command.PermissionMessageListener;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
+import org.bukkit.World;
 import org.bukkit.block.Sign;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
@@ -32,6 +40,11 @@ public class SignSystem extends JavaPlugin implements Listener {
     private final Map<Location, Integer> animationFrames = new HashMap<>();
     private final Map<String, Integer> groupMaxPlayers = new HashMap<>();
     private MySQLManager mySQLManager;
+    private NPCManager npcManager;
+    private JumpITServerManager serverManager;
+
+
+
 
     private PermissionManager permissionManager;
 
@@ -42,6 +55,11 @@ public class SignSystem extends JavaPlugin implements Listener {
 
         File mysqlFile = new File("plugins/CloudBridge/mysql.json");
         MySQLConfig config = MySQLConfig.loadFromFile(mysqlFile);
+        mySQLManager = new MySQLManager(this.getDataFolder());
+        mySQLManager.connect();
+        mySQLManager.createNPCTable();
+        
+
 
         if (config == null){
             getLogger().severe("Keine MySQL-Konfiguration gefunden. Abbruch.");
@@ -52,42 +70,77 @@ public class SignSystem extends JavaPlugin implements Listener {
         this.getServer().getMessenger().registerIncomingPluginChannel(this, "my:channel", new PermissionMessageListener(this));
         this.getServer().getMessenger().registerOutgoingPluginChannel(this, "my:channel");
         getServer().getPluginManager().registerEvents(new PermissionListener(permissionManager), this);
+        serverManager = new JumpITServerManager(this);
 
-        Bukkit.getPluginManager().registerEvents(this, this);
-        Bukkit.getPluginManager().registerEvents(new PlayerJoin(permissionManager), this);
-        getCommand("setsign").setExecutor(new SetSignCommand(this));
-        getCommand("group").setExecutor(new PermissionCommand(permissionManager));
-        getCommand("perm").setExecutor(new PermissionCommand(permissionManager));
-        mySQLManager = new MySQLManager(this.getDataFolder());
-        mySQLManager.connect();
-        this.getServer().getMessenger().registerOutgoingPluginChannel(this, "BungeeCord");
+        // PluginMessage Listener registrieren (um Antwort auf GetServers zu bekommen)
         this.getServer().getMessenger().registerIncomingPluginChannel(this, "BungeeCord", (channel, player, message) -> {
             if (!channel.equals("BungeeCord")) return;
 
-            try {
-                var in = new DataInputStream(new ByteArrayInputStream(message));
-                String subchannel = in.readUTF();
+            try (var in = new java.io.DataInputStream(new java.io.ByteArrayInputStream(message))) {
+                String subChannel = in.readUTF();
+                if (subChannel.equals("GetServers")) {
+                    String serverList = in.readUTF();
+                    new BukkitRunnable() {
 
-                if (subchannel.equals("PlayerCount")) {
-                    try {
-                        String server = in.readUTF();
-                        int count = in.readInt();
-
-                        serverPlayerCount.put(server, count);
-                        getLogger().info("Empfangen: PlayerCount für '" + server + "' = " + count);
-                    } catch (IOException e) {
-                        getLogger().warning("Fehler beim Verarbeiten von PlayerCount: " + e.getMessage());
-
-
-
-
-                    }
+                        @Override
+                        public void run() {
+                            serverManager.updateServerList(serverList);
+                        }
+                    }.runTaskTimer(this,0,20*2);
+                    serverManager.updateServerList(serverList);
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             }
         });
 
+        // PluginMessage Sender registrieren
+        this.getServer().getMessenger().registerOutgoingPluginChannel(this, "BungeeCord");
+
+        //
+        getServer().getPluginManager().registerEvents(new NPCListener(this, serverManager), this);
+
+
+
+        Bukkit.getPluginManager().registerEvents(this, this);
+   //     VillagerServerConnector.setMySQLManager(mySQLManager);
+
+     //   Bukkit.getPluginManager().registerEvents(new VillagerServerConnector(this), this);
+        Bukkit.getPluginManager().registerEvents(new PlayerJoin(permissionManager), this);
+        getCommand("setsign").setExecutor(new SetSignCommand(this));
+        getCommand("group").setExecutor(new PermissionCommand(permissionManager));
+        getCommand("perm").setExecutor(new PermissionCommand(permissionManager));
+
+
+        NPCManager npcManager = new NPCManager(this, mySQLManager);
+        getCommand("setnpc").setExecutor(new SetNPCCommand(npcManager));
+
+        this.getServer().getMessenger().registerOutgoingPluginChannel(this, "BungeeCord");
+        this.getServer().getMessenger().registerIncomingPluginChannel(this, "BungeeCord", (channel, player, message) -> {
+            if (!channel.equals("BungeeCord")) return;
+
+            try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(message))) {
+                String subchannel = in.readUTF();
+
+                if (subchannel.equals("PlayerCount")) {
+                    if (in.available() < 2) {
+
+                        return;
+                    }
+
+                    try {
+                        String server = in.readUTF();
+                        int count = in.readInt();
+                        serverPlayerCount.put(server, count);
+                    } catch (IOException e) {
+                    }
+                }
+            } catch (IOException e) {
+            }
+        });
+
+
+        loadNPCsFromDatabase();
         loadSignsFromDatabase();
         initializeSignsInWorld();   // Neu: Schilder mit Grundtext setzen
       //  loadSigns();
@@ -99,6 +152,8 @@ public class SignSystem extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+        mySQLManager.disconnect();
+
         saveSigns();
     }
 
@@ -108,22 +163,66 @@ public class SignSystem extends JavaPlugin implements Listener {
     }
 
 
-    private boolean isServerInDatabase(String serverName) {
-        try {
-            PreparedStatement ps = mySQLManager.getConnection().prepareStatement(
-                    "SELECT COUNT(*) FROM servers WHERE name = ?"
-            );
-            ps.setString(1, serverName);
-            ResultSet rs = ps.executeQuery();
-            boolean exists = rs.next() && rs.getInt(1) > 0;
-            rs.close();
-            ps.close();
-            return exists;
+    public void loadNPCsFromDatabase() {
+        try (Connection connection = mySQLManager.getConnection();
+             PreparedStatement stmt = connection.prepareStatement("SELECT * FROM npcs");
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                String name = rs.getString("name");
+                // Server holen wir jetzt erst in spawnNPC, also hier nicht nötig
+
+                double x = rs.getDouble("x");
+                double y = rs.getDouble("y");
+                double z = rs.getDouble("z");
+                float yaw = rs.getFloat("yaw");
+                float pitch = rs.getFloat("pitch");
+                String worldName = rs.getString("world");
+
+                World world = Bukkit.getWorld(worldName);
+                if (world == null) {
+                    System.out.println("Welt nicht gefunden: " + worldName);
+                    continue;
+                }
+
+                Location loc = new Location(world, x, y, z, yaw, pitch);
+                spawnNPC(loc, name, false);  // Server wird in spawnNPC aus der DB geholt, kein erneutes speichern
+            }
+
         } catch (SQLException e) {
             e.printStackTrace();
-            return false;
         }
     }
+
+
+    public void spawnNPC(Location loc, String name, boolean saveToDatabase) {
+        // Server aus MySQL holen anhand des NPC-Namens
+        String server = mySQLManager.getServerByNPCName(name);
+
+        if (server == null) {
+            System.out.println("[NPC] Kein Servername in MySQL für NPC '" + name + "' gefunden.");
+            return;
+        }
+
+        Villager villager = loc.getWorld().spawn(loc, Villager.class);
+        villager.setCustomName("§e" + name);
+        villager.setCustomNameVisible(true);
+        villager.setInvulnerable(true);
+        villager.setAI(false);
+        villager.setCollidable(false);
+        villager.setProfession(Villager.Profession.NITWIT);
+        villager.setVillagerLevel(1);
+        villager.setSilent(true);
+        villager.setVillagerType(Villager.Type.PLAINS);
+
+        NamespacedKey key = new NamespacedKey(this, "npc_server");
+        villager.getPersistentDataContainer().set(key, PersistentDataType.STRING, server);
+
+        if (saveToDatabase) {
+            mySQLManager.insertNPC(name, server, loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch(), loc.getWorld().getName());
+        }
+    }
+
 
 
 
@@ -216,15 +315,10 @@ public class SignSystem extends JavaPlugin implements Listener {
                 int count = serverPlayerCount.getOrDefault(server, -1);
                 String baseName = getBaseName(server);
 
-                getLogger().info("Update Sign at " + loc + " for server " + server + ": count=" + count);
+               // getLogger().info("Update Sign at " + loc + " for server " + server + ": count=" + count);
 
                 // Prüfe ob Server gestartet ist
                 boolean started = isServerStarted(server);
-
-                for (Player all : Bukkit.getOnlinePlayers()){
-                    all.sendMessage("Server '" + server + "' started: " + started);
-                }
-                getLogger().info("Server '" + server + "' started: " + started);
                 if (!started) {
                     animationFrames.putIfAbsent(loc, 0);
                     continue;
@@ -236,15 +330,11 @@ public class SignSystem extends JavaPlugin implements Listener {
                     if (maxPlayers == -1) maxPlayers = 20;
                     groupMaxPlayers.put(baseName.toLowerCase(), maxPlayers);
                 }
-                getLogger().info("Max players for baseName '" + baseName + "': " + maxPlayers);
 
-                if (count == -1) {
-                    getLogger().warning("Player count für Server '" + server + "' ist -1 (offline oder unbekannt)");
-                }
+
 
                 if (count == -1 || count >= maxPlayers) {
                     String nextServer = findNextAvailableServer(baseName, server);
-                    getLogger().info("Next available server für baseName '" + baseName + "': " + nextServer);
                     if (nextServer != null) {
                         signServers.put(loc, nextServer);
                         saveSigns();
@@ -387,7 +477,7 @@ public class SignSystem extends JavaPlugin implements Listener {
         }
     }
 
-    private void connectPlayer(Player player, String server) {
+    public void connectPlayer(Player player, String server) {
         ByteArrayOutputStream b = new ByteArrayOutputStream();
         DataOutputStream out = new DataOutputStream(b);
         try {
@@ -476,7 +566,6 @@ public class SignSystem extends JavaPlugin implements Listener {
     private String findNextAvailableServer(String baseName, String currentServer) {
         int maxPlayers = getMaxPlayersFromDatabase(baseName.toLowerCase());
         if (maxPlayers == -1) {
-            getLogger().warning("Konnte maxPlayers für Gruppe " + baseName + " nicht aus der Datenbank lesen.");
             maxPlayers = 2; // Fallback
         }
 
@@ -511,20 +600,10 @@ public class SignSystem extends JavaPlugin implements Listener {
         return maxPlayers;
     }
 
-
-
-
-
     private String locationToString(Location loc) {
         return loc.getWorld().getName() + "," + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ();
     }
-
-    private Location stringToLocation(String s) {
-        String[] parts = s.split(",");
-        return new Location(Bukkit.getWorld(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), Integer.parseInt(parts[3]));
+    public Map<String, Integer> getServerPlayerCounts() {
+        return serverPlayerCount;
     }
-    public MySQLManager getMySQLManager() {
-        return mySQLManager;
-    }
-
 }
